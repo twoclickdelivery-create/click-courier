@@ -1,0 +1,62 @@
+{
+  "expo": {
+    "name": "CLICK Курьер",
+    "slug": "click-courier",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "clickcourier",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#111111"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "ru.clickdelivery.courier",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "CLICK использует ваше местоположение для определения адреса доставки и отображения вас на карте.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "CLICK использует ваше местоположение в фоновом режиме для отслеживания доставки заказов.",
+        "NSCameraUsageDescription": "CLICK использует камеру для фото подтверждения доставки.",
+        "NSPhotoLibraryUsageDescription": "CLICK использует фото для подтверждения доставки заказа.",
+        "UIBackgroundModes": [
+          "location",
+          "fetch",
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "package": "ru.clickdelivery.courier",
+      "versionCode": 1,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "VIBRATE",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "CLICK использует ваше местоположение для доставки заказов."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CLICK запрашивает доступ к фото для подтверждения доставки."
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}

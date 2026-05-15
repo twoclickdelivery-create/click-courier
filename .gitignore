@@ -1,0 +1,25 @@
+node_modules/
+.expo/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+.DS_Store
+*.log
+.env
+.env.local
+.env.*.local
+ios/
+android/
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# Claude Code local config
+.claude/
