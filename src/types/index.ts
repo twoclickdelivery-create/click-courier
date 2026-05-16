@@ -8,6 +8,11 @@ export interface Coordinates {
 export interface Courier {
   id: string;
   name: string;
+  fullName?: string;       // ФИО из анкеты
+  inn?: string;            // ИНН 12 цифр
+  selfEmployed?: boolean;
+  ofertaAcceptedAt?: number;
+  registeredAt?: number;
   phone: string;
   avatar?: string;
   transport: TransportType;

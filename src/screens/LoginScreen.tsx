@@ -2,13 +2,17 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,7 +24,7 @@ import { ClickIllustration } from '../components/courier/ClickIllustration';
 import { supabase } from '../lib/supabase';
 
 type Role = 'courier' | 'dispatcher';
-type Step = 'phone' | 'code' | 'transport';
+type Step = 'phone' | 'code' | 'register' | 'transport';
 
 const transportOptions: { type: TransportType; label: string; emoji: string; desc: string }[] = [
   { type: 'foot',  label: 'Пешком',    emoji: '🚶', desc: 'Малые расстояния' },
@@ -28,31 +32,49 @@ const transportOptions: { type: TransportType; label: string; emoji: string; des
   { type: 'car',   label: 'Авто',      emoji: '🚗', desc: 'Любые расстояния' },
 ];
 
-const STEP_NUMBER: Record<Step, number> = { phone: 1, code: 2, transport: 3 };
+const STEP_NUMBER: Record<Step, number> = { phone: 1, code: 2, register: 3, transport: 4 };
 
 const STEP_LABELS: Record<Step, string> = {
   phone:     'Введите номер',
   code:      'Введите SMS-код',
+  register:  'Анкета курьера',
   transport: 'Выберите транспорт',
 };
 
 export const LoginScreen: React.FC = () => {
   const [role, setRole]           = useState<Role>('courier');
-  const [phone, setPhone]         = useState('');   // только 10 цифр без +7
+  const [phone, setPhone]         = useState('');
   const [code, setCode]           = useState('');
   const [step, setStep]           = useState<Step>('phone');
   const [transport, setTransport] = useState<TransportType>('bike');
   const [loading, setLoading]     = useState(false);
+
+  // Регистрация
+  const [fullName, setFullName]           = useState('');
+  const [inn, setInn]                     = useState('');
+  const [selfEmployed, setSelfEmployed]   = useState(false);
+  const [ofertaAccepted, setOfertaAccepted] = useState(false);
+  const [showOferta, setShowOferta]       = useState(false);
+  const [isNewCourier, setIsNewCourier]   = useState(false);
+
   const login = useAuthStore((s) => s.login);
 
-  const totalSteps  = role === 'dispatcher' ? 2 : 3;
+  const totalSteps  = role === 'dispatcher' ? 2 : isNewCourier ? 4 : 3;
   const currentStep = STEP_NUMBER[step];
 
-  // Возвращает номер в формате +7XXXXXXXXXX для Supabase
   const e164 = () => '+7' + phone;
+
+  const validateInn = (v: string): boolean => {
+    if (!/^\d{12}$/.test(v)) return false;
+    const d = v.split('').map(Number);
+    const n1 = ([7,2,4,10,3,5,9,4,6,8].reduce((s,w,i) => s + w*d[i], 0) % 11) % 10;
+    const n2 = ([3,7,2,4,10,3,5,9,4,6,8].reduce((s,w,i) => s + w*d[i], 0) % 11) % 10;
+    return n1 === d[10] && n2 === d[11];
+  };
 
   // ── ШАГ 1: отправить SMS через Supabase ───────────────────────────
   const handleSendCode = async () => {
+    Keyboard.dismiss();
     if (phone.replace(/\D/g, '').length < 10) {
       Alert.alert('Введите номер телефона целиком');
       return;
@@ -70,6 +92,7 @@ export const LoginScreen: React.FC = () => {
 
   // ── ШАГ 2: проверить код из SMS ───────────────────────────────────
   const handleVerifyCode = async () => {
+    Keyboard.dismiss();
     if (code.length < 6) {
       Alert.alert('Введите код из SMS');
       return;
@@ -87,17 +110,61 @@ export const LoginScreen: React.FC = () => {
       return;
     }
 
-    // Сохраняем роль в профиле
     await supabase.from('profiles').update({ role }).eq('id', data.user.id);
 
     if (role === 'dispatcher') {
       login(e164(), 'dispatcher');
       return;
     }
+
+    // Проверяем — новый курьер или уже зарегистрирован
+    const { data: profile } = await supabase
+      .from('profiles').select('full_name').eq('id', data.user.id).single();
+
+    if (!profile?.full_name) {
+      setIsNewCourier(true);
+      setStep('register');
+    } else {
+      setStep('transport');
+    }
+  };
+
+  // ── ШАГ 3: анкета курьера (только новые) ──────────────────────────
+  const handleRegister = async () => {
+    Keyboard.dismiss();
+    const nameParts = fullName.trim().split(/\s+/);
+    if (nameParts.length < 2) {
+      Alert.alert('Введите полное ФИО', 'Фамилия и имя обязательны');
+      return;
+    }
+    if (!validateInn(inn)) {
+      Alert.alert('Неверный ИНН', 'Введите 12-значный ИНН физического лица');
+      return;
+    }
+    if (!selfEmployed) {
+      Alert.alert('Требуется статус самозанятого', 'Для работы курьером в CLICK необходим статус самозанятого (ФЗ № 422-ФЗ)');
+      return;
+    }
+    if (!ofertaAccepted) {
+      Alert.alert('Примите условия оферты', 'Необходимо принять условия публичной оферты для продолжения');
+      return;
+    }
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('profiles').update({
+        full_name: fullName.trim(),
+        inn,
+        self_employed: true,
+        oferta_accepted_at: new Date().toISOString(),
+        name: nameParts[1], // имя
+      }).eq('id', user.id);
+    }
+    setLoading(false);
     setStep('transport');
   };
 
-  // ── ШАГ 3: выбор транспорта (только курьер) ───────────────────────
+  // ── ШАГ 4: выбор транспорта (только курьер) ───────────────────────
   const handleLogin = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -120,12 +187,14 @@ export const LoginScreen: React.FC = () => {
 
   /* ── заголовок меняется по шагу ── */
   const headerContent = {
-    phone: { title: 'С возвращением!', sub: 'Войдите, чтобы начать смену' },
-    code:  { title: 'Введите код',     sub: `Отправили SMS на ${phone}` },
-    transport: { title: 'Ваш транспорт', sub: 'Выберите один раз — можно сменить в настройках' },
+    phone:     { title: 'С возвращением!', sub: 'Войдите, чтобы начать смену' },
+    code:      { title: 'Введите код',     sub: `Отправили SMS на ${phone}` },
+    register:  { title: 'Анкета курьера',  sub: 'Заполните один раз для идентификации' },
+    transport: { title: 'Ваш транспорт',   sub: 'Выберите один раз — можно сменить в настройках' },
   }[step];
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* Header */}
       {step === 'phone' ? (
@@ -178,6 +247,8 @@ export const LoginScreen: React.FC = () => {
                   placeholderTextColor={colors.textMuted}
                   keyboardType="number-pad"
                   maxLength={10}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSendCode}
                 />
               </View>
 
@@ -206,6 +277,8 @@ export const LoginScreen: React.FC = () => {
                 keyboardType="number-pad"
                 autoFocus
                 maxLength={6}
+                returnKeyType="done"
+                onSubmitEditing={handleVerifyCode}
               />
               <Text style={styles.codeHint}>
                 Код отправлен на {phone}
@@ -230,7 +303,96 @@ export const LoginScreen: React.FC = () => {
             </>
           )}
 
-          {/* ── ШАГ 3: Выбор транспорта (только для курьера) ── */}
+          {/* ── ШАГ 3: Анкета (новые курьеры) ── */}
+          {step === 'register' && (
+            <>
+              <Text style={styles.registerNote}>
+                Заполните анкету один раз. Данные хранятся в соответствии с ФЗ-152 и используются только для идентификации курьера.
+              </Text>
+
+              <Text style={[styles.fieldLabel, { marginTop: spacing.sm }]}>ФИО (полностью)</Text>
+              <TextInput
+                style={styles.input}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Иванов Иван Иванович"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+
+              <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>ИНН (12 цифр)</Text>
+              <TextInput
+                style={styles.input}
+                value={inn}
+                onChangeText={(t) => setInn(t.replace(/\D/g, '').slice(0, 12))}
+                placeholder="123456789012"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="number-pad"
+                maxLength={12}
+                returnKeyType="done"
+              />
+              <Text style={styles.innHint}>ИНН физлица — 12 цифр. Найти: nalog.ru или приложение «Мой налог»</Text>
+
+              <Pressable
+                style={styles.checkRow}
+                onPress={() => setSelfEmployed((v) => !v)}
+              >
+                <View style={[styles.checkbox, selfEmployed && styles.checkboxChecked]}>
+                  {selfEmployed && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+                <Text style={styles.checkLabel}>Я зарегистрирован как самозанятый</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.checkRow}
+                onPress={() => setOfertaAccepted((v) => !v)}
+              >
+                <View style={[styles.checkbox, ofertaAccepted && styles.checkboxChecked]}>
+                  {ofertaAccepted && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+                <Text style={styles.checkLabel}>
+                  Принимаю условия{' '}
+                  <Text style={styles.ofertaLink} onPress={() => setShowOferta(true)}>
+                    публичной оферты
+                  </Text>
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [styles.primaryBtn, (pressed || loading) && { opacity: 0.75 }]}
+                onPress={handleRegister}
+                disabled={loading}
+              >
+                {loading
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.primaryBtnText}>Продолжить →</Text>}
+              </Pressable>
+
+              {/* Модалка с текстом оферты */}
+              <Modal visible={showOferta} animationType="slide" presentationStyle="pageSheet">
+                <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+                  <View style={styles.ofertaHeader}>
+                    <Text style={styles.ofertaTitle}>Публичная оферта</Text>
+                    <Pressable onPress={() => setShowOferta(false)} hitSlop={12}>
+                      <Text style={styles.ofertaClose}>Закрыть</Text>
+                    </Pressable>
+                  </View>
+                  <ScrollView contentContainerStyle={styles.ofertaBody}>
+                    <Text style={styles.ofertaText}>{OFERTA_TEXT}</Text>
+                  </ScrollView>
+                  <Pressable
+                    style={[styles.primaryBtn, { margin: spacing.xl }]}
+                    onPress={() => { setOfertaAccepted(true); setShowOferta(false); }}
+                  >
+                    <Text style={styles.primaryBtnText}>Принять и закрыть</Text>
+                  </Pressable>
+                </SafeAreaView>
+              </Modal>
+            </>
+          )}
+
+          {/* ── ШАГ 4: Выбор транспорта (только для курьера) ── */}
           {step === 'transport' && (
             <>
               <Text style={styles.transportHint}>
@@ -282,6 +444,7 @@ export const LoginScreen: React.FC = () => {
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -354,6 +517,36 @@ const RoleTab: React.FC<{ label: string; active: boolean; onPress: () => void }>
     <Text style={[styles.roleTabText, active && styles.roleTabTextActive]}>{label}</Text>
   </Pressable>
 );
+
+/* ── Текст публичной оферты ── */
+
+const OFERTA_TEXT = `ПУБЛИЧНАЯ ОФЕРТА
+ИП / ООО CLICK Delivery, Махачкала
+
+1. ПРЕДМЕТ ДОГОВОРА
+Настоящая оферта регулирует отношения между сервисом CLICK Delivery и курьером — физическим лицом, зарегистрированным в качестве плательщика налога на профессиональный доход (самозанятым) в соответствии с Федеральным законом № 422-ФЗ от 27.11.2018.
+
+2. УСЛОВИЯ СОТРУДНИЧЕСТВА
+2.1. Курьер оказывает услуги по доставке заказов самостоятельно, не являясь наёмным работником.
+2.2. Вознаграждение рассчитывается за каждый выполненный заказ и выплачивается в установленные сроки.
+2.3. Курьер несёт ответственность за сохранность переданного заказа в период доставки.
+2.4. Курьер обязуется соблюдать стандарты сервиса и правила общения с клиентами.
+
+3. ПЕРСОНАЛЬНЫЕ ДАННЫЕ (ФЗ-152)
+3.1. Курьер даёт согласие на обработку персональных данных: ФИО, ИНН, номер телефона.
+3.2. Данные используются исключительно для идентификации, расчёта вознаграждения и соблюдения налогового законодательства.
+3.3. Данные не передаются третьим лицам, кроме случаев, предусмотренных законодательством РФ.
+3.4. Хранение данных осуществляется в соответствии с требованиями ФЗ-152 «О персональных данных».
+3.5. Курьер вправе в любой момент запросить удаление своих данных, направив заявление через приложение.
+
+4. СТАТУС САМОЗАНЯТОГО
+4.1. Курьер подтверждает наличие статуса плательщика НПД и обязуется формировать чек в приложении «Мой налог» после каждой выплаты.
+4.2. Сервис не является налоговым агентом курьера.
+
+5. АКЦЕПТ ОФЕРТЫ
+Нажимая «Принять и закрыть», вы подтверждаете, что ознакомились с условиями оферты и принимаете их в полном объёме.
+
+Версия 1.0 · ${new Date().getFullYear()} г.`;
 
 /* ── Styles ── */
 
@@ -580,5 +773,92 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: colors.primary,
+  },
+
+  /* register step */
+  registerNote: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    color: colors.textMuted,
+    lineHeight: 18,
+    backgroundColor: colors.bg2,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    marginBottom: spacing.sm,
+  },
+  innHint: {
+    fontFamily: fonts.sans,
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: colors.border2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg2,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkmark: {
+    fontSize: 13,
+    color: '#fff',
+    fontFamily: fonts.sansBold,
+  },
+  checkLabel: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    color: colors.text,
+    flex: 1,
+    lineHeight: 20,
+  },
+  ofertaLink: {
+    color: colors.primary,
+    textDecorationLine: 'underline',
+    fontFamily: fonts.sansMedium,
+  },
+
+  /* oferta modal */
+  ofertaHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  ofertaTitle: {
+    fontFamily: fonts.sansBold,
+    fontSize: 17,
+    color: colors.text,
+  },
+  ofertaClose: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 14,
+    color: colors.primary,
+  },
+  ofertaBody: {
+    padding: spacing.xl,
+  },
+  ofertaText: {
+    fontFamily: fonts.sans,
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 22,
   },
 });

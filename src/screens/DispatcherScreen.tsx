@@ -368,6 +368,7 @@ export const DispatcherScreen: React.FC<Props> = ({ navigation }) => {
               onlineCouriers={onlineCouriers}
               onToggle={toggleOnline}
               ordersInProgress={ordersInProgress}
+              onOpenCourier={(id) => navigation.navigate('CourierDetail', { courierId: id })}
             />
           ) : (
             <MapTab
@@ -621,7 +622,8 @@ const CouriersTab: React.FC<{
   onlineCouriers: Set<string>;
   ordersInProgress: Order[];
   onToggle: (id: string) => void;
-}> = ({ couriers, onlineCouriers, ordersInProgress, onToggle }) => (
+  onOpenCourier: (id: string) => void;
+}> = ({ couriers, onlineCouriers, ordersInProgress, onToggle, onOpenCourier }) => (
   <View>
     <SectionHeader title="КУРЬЕРЫ" count={couriers.length} accent={colors.green} />
     {couriers.map((c) => (
@@ -631,6 +633,7 @@ const CouriersTab: React.FC<{
         online={onlineCouriers.has(c.id)}
         ordersAssigned={ordersInProgress.filter((o) => o.courierId === c.id).length}
         onToggle={() => onToggle(c.id)}
+        onPress={() => onOpenCourier(c.id)}
       />
     ))}
   </View>
@@ -897,7 +900,8 @@ const CourierRow: React.FC<{
   online: boolean;
   ordersAssigned: number;
   onToggle: () => void;
-}> = ({ courier, online, ordersAssigned, onToggle }) => {
+  onPress: () => void;
+}> = ({ courier, online, ordersAssigned, onToggle, onPress }) => {
   const maxLoad  = MAX_LOAD[courier.transport];
   const loadPct  = Math.min(ordersAssigned / maxLoad, 1);
   const loadColor = loadPct >= 1 ? colors.danger : loadPct >= 0.6 ? colors.amber : colors.green;
@@ -910,7 +914,10 @@ const CourierRow: React.FC<{
   };
 
   return (
-    <View style={[courierStyles.card, online && courierStyles.cardOnline]}>
+    <Pressable
+      style={[courierStyles.card, online && courierStyles.cardOnline]}
+      onPress={onPress}
+    >
       <View style={courierStyles.avatar}>
         <Text style={courierStyles.avatarText}>{courier.name.charAt(0)}</Text>
         <View style={[courierStyles.statusDot, { backgroundColor: online ? colors.green : colors.textMuted }]} />
@@ -928,7 +935,6 @@ const CourierRow: React.FC<{
             : online ? <Text style={courierStyles.free}>свободен</Text> : null}
         </View>
 
-        {/* Полоса загрузки — только если онлайн */}
         {online ? (
           <View style={courierStyles.loadBarBg}>
             <View style={[courierStyles.loadBarFill, { width: `${loadPct * 100}%` as any, backgroundColor: loadColor }]} />
@@ -936,7 +942,6 @@ const CourierRow: React.FC<{
         ) : null}
       </View>
 
-      {/* Кнопка звонка */}
       <Pressable onPress={handleCall} hitSlop={8} style={courierStyles.callBtn}>
         <Text style={courierStyles.callIcon}>📞</Text>
       </Pressable>
@@ -946,7 +951,7 @@ const CourierRow: React.FC<{
           {online ? 'НА СМЕНЕ' : 'ОФФЛАЙН'}
         </Text>
       </Pressable>
-    </View>
+    </Pressable>
   );
 };
 

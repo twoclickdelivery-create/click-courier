@@ -6,6 +6,7 @@ import { DispatcherScreen } from '../screens/DispatcherScreen';
 import { DispatcherOrderDetailScreen } from '../screens/DispatcherOrderDetailScreen';
 import { ClientsScreen } from '../screens/ClientsScreen';
 import { ClientDetailScreen } from '../screens/ClientDetailScreen';
+import { CourierDetailScreen } from '../screens/CourierDetailScreen';
 import { MainTabs } from './MainTabs';
 import { useAuthStore } from '../store/authStore';
 
@@ -17,6 +18,7 @@ export type RootStackParamList = {
   DispatcherOrderDetail: { orderId: string };
   Clients: undefined;
   ClientDetail: { phone: string };
+  CourierDetail: { courierId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -45,6 +47,11 @@ export const RootNavigator: React.FC = () => {
           <Stack.Screen
             name="ClientDetail"
             component={ClientDetailScreen}
+            options={{ animation: 'slide_from_right' }}
+          />
+          <Stack.Screen
+            name="CourierDetail"
+            component={CourierDetailScreen}
             options={{ animation: 'slide_from_right' }}
           />
         </>

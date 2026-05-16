@@ -26,6 +26,7 @@ const TAG_LABELS: Record<ClientTag, string> = {
   frequent:  '🔥 Частый',
   new:       '🆕 Новый',
   returning: '↩ Вернулся',
+  lost:      '💔 Потерян',
 };
 
 const AVATAR_COLORS = [
