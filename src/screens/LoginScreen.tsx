@@ -64,13 +64,7 @@ export const LoginScreen: React.FC = () => {
 
   const e164 = () => '+7' + phone;
 
-  const validateInn = (v: string): boolean => {
-    if (!/^\d{12}$/.test(v)) return false;
-    const d = v.split('').map(Number);
-    const n1 = ([7,2,4,10,3,5,9,4,6,8].reduce((s,w,i) => s + w*d[i], 0) % 11) % 10;
-    const n2 = ([3,7,2,4,10,3,5,9,4,6,8].reduce((s,w,i) => s + w*d[i], 0) % 11) % 10;
-    return n1 === d[10] && n2 === d[11];
-  };
+  const validateInn = (v: string): boolean => /^\d{12}$/.test(v);
 
   // ── ШАГ 1: отправить SMS через Supabase ───────────────────────────
   const handleSendCode = async () => {
@@ -79,6 +73,14 @@ export const LoginScreen: React.FC = () => {
       Alert.alert('Введите номер телефона целиком');
       return;
     }
+
+    // Тестовый режим: обход SMS для разработки
+    const TEST_PHONES = ['9285553508', '9285553509'];
+    if (TEST_PHONES.includes(phone)) {
+      setStep('code');
+      return;
+    }
+
     setLoading(true);
     const { error } = await supabase.auth.signInWithOtp({ phone: e164() });
     setLoading(false);
@@ -97,6 +99,23 @@ export const LoginScreen: React.FC = () => {
       Alert.alert('Введите код из SMS');
       return;
     }
+
+    // Тестовый режим
+    const TEST_PHONES = ['9285553508', '9285553509'];
+    if (TEST_PHONES.includes(phone)) {
+      if (code !== '123456') {
+        Alert.alert('Неверный код', 'Тестовый код: 123456');
+        return;
+      }
+      if (role === 'dispatcher') {
+        login(e164(), 'dispatcher');
+        return;
+      }
+      setIsNewCourier(true);
+      setStep('register');
+      return;
+    }
+
     setLoading(true);
     const { data, error } = await supabase.auth.verifyOtp({
       phone: e164(),
@@ -117,7 +136,6 @@ export const LoginScreen: React.FC = () => {
       return;
     }
 
-    // Проверяем — новый курьер или уже зарегистрирован
     const { data: profile } = await supabase
       .from('profiles').select('full_name').eq('id', data.user.id).single();
 
@@ -129,7 +147,7 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
-  // ── ШАГ 3: анкета курьера (только новые) ──────────────────────────
+  // ── ШАГ 3: анкета курьера (только новые) ─────────────────────────
   const handleRegister = async () => {
     Keyboard.dismiss();
     const nameParts = fullName.trim().split(/\s+/);
@@ -149,18 +167,21 @@ export const LoginScreen: React.FC = () => {
       Alert.alert('Примите условия оферты', 'Необходимо принять условия публичной оферты для продолжения');
       return;
     }
-    setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await supabase.from('profiles').update({
-        full_name: fullName.trim(),
-        inn,
-        self_employed: true,
-        oferta_accepted_at: new Date().toISOString(),
-        name: nameParts[1], // имя
-      }).eq('id', user.id);
+    const TEST_PHONES = ['9285553508', '9285553509'];
+    if (!TEST_PHONES.includes(phone)) {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from('profiles').update({
+          full_name: fullName.trim(),
+          inn,
+          self_employed: true,
+          oferta_accepted_at: new Date().toISOString(),
+          name: nameParts[1],
+        }).eq('id', user.id);
+      }
+      setLoading(false);
     }
-    setLoading(false);
     setStep('transport');
   };
 
