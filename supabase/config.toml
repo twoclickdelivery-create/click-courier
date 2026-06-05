@@ -1,0 +1,17 @@
+# ============================================================================
+# Supabase project config (для CLI и локальных Edge Functions).
+# project_id берётся из `supabase link`; здесь нужен только для функций.
+# ============================================================================
+
+project_id = "click-courier"
+
+# ── Edge Functions ──────────────────────────────────────────────────────────
+# iiko-webhook: вызывается извне iikoCloud — JWT отключаем, защита через
+# query-параметр ?secret=<IIKO_WEBHOOK_SECRET>.
+[functions.iiko-webhook]
+verify_jwt = false
+
+# iiko-auth: внутренняя функция, может вызываться другими Edge Functions
+# или фронтом диспетчера → оставляем JWT для базовой защиты.
+[functions.iiko-auth]
+verify_jwt = true
