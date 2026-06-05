@@ -22,6 +22,12 @@ import { colors } from '../theme/colors';
 import { fonts, radii, spacing, typography } from '../theme/typography';
 import { useOrdersStore } from '../store/ordersStore';
 import { useLocationStore } from '../store/locationStore';
+import {
+  getNavAppLabel,
+  loadPreferredNavApp,
+  NavApp,
+  openRoute,
+} from '../utils/navigationApps';
 import { CancelReason, OrderStatus } from '../types';
 import type { NavigationProp, RouteProp } from '@react-navigation/native';
 
@@ -83,10 +89,21 @@ export const ActiveOrderScreen: React.FC<Props> = ({ route, navigation }) => {
   const [photoUri, setPhotoUri] = useState<string | undefined>(order?.proofPhotoUri);
   const [showRating, setShowRating] = useState(false);
   const [clientRating, setClientRating] = useState(5);
+  const [preferredNav, setPreferredNav] = useState<NavApp | null>(null);
 
   useEffect(() => {
     setPhotoUri(order?.proofPhotoUri);
   }, [order?.proofPhotoUri]);
+
+  useEffect(() => {
+    let alive = true;
+    loadPreferredNavApp().then((v) => {
+      if (alive) setPreferredNav(v);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const stage: 'to_restaurant' | 'to_client' = useMemo(() => {
     if (!order) return 'to_restaurant';
@@ -131,40 +148,21 @@ export const ActiveOrderScreen: React.FC<Props> = ({ route, navigation }) => {
     stage === 'to_restaurant' ? order.restaurant.coordinates : order.client.coordinates;
 
   // --- Nav helpers ---
-  const openNav2GIS = async () => {
-    const { latitude, longitude } = navCoords;
-    const deepLink = `dgis://2gis.ru/routeSearch/rsType/car/to/${latitude},${longitude}`;
-    const fallback = `https://2gis.ru/directions/to/${longitude},${latitude}`;
-    try {
-      const can = await Linking.canOpenURL(deepLink);
-      if (can) {
-        await Linking.openURL(deepLink);
-      } else {
-        await Linking.openURL(fallback);
-      }
-    } catch {
-      await Linking.openURL(fallback).catch(() =>
-        Alert.alert('Не удалось открыть 2GIS')
-      );
-    }
+  // Одна кнопка «Маршрут»: при первом нажатии — выбор приложения с запоминанием,
+  // потом сразу открывает выбранное. Долгое нажатие — сменить приложение.
+  const openNavRoute = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    await openRoute(navCoords.latitude, navCoords.longitude);
+    // Подтянуть актуальное предпочтение, чтобы подпись на кнопке обновилась
+    const fresh = await loadPreferredNavApp();
+    setPreferredNav(fresh);
   };
 
-  const openNavYandex = async () => {
-    const { latitude: lat, longitude: lon } = navCoords;
-    const deepLink = `yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lon}`;
-    const fallback = `https://yandex.ru/maps/?rtext=~${lat},${lon}&rtt=auto`;
-    try {
-      const can = await Linking.canOpenURL(deepLink);
-      if (can) {
-        await Linking.openURL(deepLink);
-      } else {
-        await Linking.openURL(fallback);
-      }
-    } catch {
-      await Linking.openURL(fallback).catch(() =>
-        Alert.alert('Не удалось открыть Яндекс Навигатор')
-      );
-    }
+  const openNavRoutePicker = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    await openRoute(navCoords.latitude, navCoords.longitude, { forcePick: true });
+    const fresh = await loadPreferredNavApp();
+    setPreferredNav(fresh);
   };
 
   const handleCall = () => {
@@ -348,14 +346,23 @@ export const ActiveOrderScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text style={styles.callBtn}>ПОЗВОНИТЬ</Text>
           </Pressable>
 
-          <View style={styles.navRow}>
-            <Pressable style={styles.navBtn} onPress={openNav2GIS}>
-              <Text style={styles.navBtnText}>🗺 2GIS</Text>
-            </Pressable>
-            <Pressable style={styles.navBtn} onPress={openNavYandex}>
-              <Text style={styles.navBtnText}>🧭 Яндекс</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            style={styles.routeBtn}
+            onPress={openNavRoute}
+            onLongPress={openNavRoutePicker}
+            delayLongPress={400}
+          >
+            <Text style={styles.routeBtnIcon}>🧭</Text>
+            <View style={styles.routeBtnTextWrap}>
+              <Text style={styles.routeBtnText}>ПОСТРОИТЬ МАРШРУТ</Text>
+              <Text style={styles.routeBtnHint}>
+                {preferredNav
+                  ? `в ${getNavAppLabel(preferredNav)} · удерж. для смены`
+                  : 'выбор приложения при первом нажатии'}
+              </Text>
+            </View>
+            <Text style={styles.routeBtnArrow}>›</Text>
+          </Pressable>
 
           {stage === 'to_client' && order.client.comment ? (
             <View style={styles.commentBox}>
@@ -623,28 +630,42 @@ const styles = StyleSheet.create({
     color: colors.primary,
     letterSpacing: 1,
   },
-  navRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  navBtn: {
-    flex: 1,
+  routeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: colors.bg2,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.primary,
+    marginTop: spacing.sm,
   },
-  navBtnText: {
-    fontFamily: fonts.monoBold,
-    fontSize: 13,
+  routeBtnIcon: {
+    fontSize: 22,
+    marginRight: spacing.md,
+  },
+  routeBtnTextWrap: {
+    flex: 1,
+  },
+  routeBtnText: {
+    fontFamily: fonts.displayBold,
+    fontSize: 14,
     color: colors.text,
-    letterSpacing: 0.3,
+    letterSpacing: 0.6,
+  },
+  routeBtnHint: {
+    fontFamily: fonts.mono,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+    letterSpacing: 0.2,
+  },
+  routeBtnArrow: {
+    fontSize: 24,
+    color: colors.primary,
+    marginLeft: spacing.sm,
+    lineHeight: 24,
   },
   commentBox: {
     backgroundColor: colors.amberFaint,

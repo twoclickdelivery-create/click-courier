@@ -27,7 +27,7 @@ interface Props {
 
 const transportEmoji = { foot: '🚶', bike: '🚴', car: '🚗' } as const;
 
-export const DispatcherMap: React.FC<Props> = ({
+const DispatcherMapInner: React.FC<Props> = ({
   orders,
   couriers,
   selectedOrderId,
@@ -72,6 +72,12 @@ export const DispatcherMap: React.FC<Props> = ({
       initialRegion={region}
       showsMyLocationButton={Platform.OS === 'android'}
       showsCompass={false}
+      rotateEnabled={false}
+      pitchEnabled={false}
+      toolbarEnabled={false}
+      moveOnMarkerPress={false}
+      loadingEnabled
+      loadingBackgroundColor={colors.bg2}
     >
       <UrlTile
         urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -160,6 +166,9 @@ export const DispatcherMap: React.FC<Props> = ({
     </MapView>
   );
 };
+
+// memo: предотвращает перерендер всей карты при незначительных изменениях родителя
+export const DispatcherMap = React.memo(DispatcherMapInner);
 
 const styles = StyleSheet.create({
   pin: {

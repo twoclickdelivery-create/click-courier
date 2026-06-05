@@ -122,24 +122,18 @@ export default function App() {
   }, [isAuthenticated, isOnShift]);
 
   // ── Supabase session sync ─────────────────────────────────────────────────────
-  // На старте проверяем, есть ли живая сессия Supabase.
-  // Если Zustand думает что пользователь залогинен, но сессия истекла — разлогиниваем.
-  // Также подписываемся на SIGNED_OUT чтобы синхронизировать состояние.
+  // Слушаем только SIGNED_OUT (явный логаут или отзыв сессии Supabase).
+  // НЕ чистим стор по getSession()===null на старте: AsyncStorage/Supabase
+  // подтягивают токен асинхронно, и при холодном старте на Android
+  // getSession() часто отрабатывает раньше, чем хранилище отдаёт сессию —
+  // это и вызывало «слетает каждый раз». Диспетчер вообще без Supabase-сессии,
+  // его выкидывало гарантированно.
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session && useAuthStore.getState().isAuthenticated) {
-        useAuthStore.setState({
-          isAuthenticated: false,
-          role: 'courier',
-          courier: null,
-          isOnShift: false,
-          shiftStartedAt: null,
-        });
-      }
-    });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') {
+        // Дополнительная защита: диспетчер логинится локально, без Supabase —
+        // его не трогаем, событие SIGNED_OUT для него не релевантно.
+        if (useAuthStore.getState().role === 'dispatcher') return;
         useAuthStore.setState({
           isAuthenticated: false,
           role: 'courier',
